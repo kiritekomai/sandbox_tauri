@@ -5,6 +5,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import SelectButton from "primevue/selectbutton";
 import InputText from "primevue/inputtext";
 
+const filePath = ref("");
+
 const editModes = [
   { label: "ファイル追加", value: "addFile" },
   { label: "ファイル削除", value: "deleteFile" },
@@ -18,7 +20,6 @@ const debugMessage = ref("");
 const nodeArray = ref([]);
 const selectedIds = ref({});
 const openIds = ref({});
-const currentFilePath = ref(""); // set when load
 const newFileName = ref("newfile");
 
 function expandAll(data) {
@@ -33,7 +34,6 @@ function expandAll(data) {
   return keys;
 }
 
-//
 function markDisabled(nodes) {
   return nodes.map((node) => {
     const newNode = { ...node };
@@ -47,47 +47,81 @@ function markDisabled(nodes) {
   });
 }
 async function onLoadExample() {
-  // Example: ask backend to load a file path. Adjust path as needed (absolute).
-  const path = "C:/Users/Admin/Desktop/script/aaaa/sample.xml"; // <-- change to actual path on your machine
-  currentFilePath.value = path;
+  // For debug
+  const path = "C:/Users/Admin/Desktop/script/aaaa/sample.xml";
+  filePath.value = path;
   await invoke("load_files", { paths: [path] });
   const t = await invoke("get_tree", { path });
   nodeArray.value = markDisabled(t);
   openIds.value = expandAll(t);
+  selectedIds.value = {};
   debugMessage.value = t;
 }
 
-async function doSort() {
-  // invoke sort_groups with selectedIds
-  await invoke("sort_groups", { node_ids: selectedIds.value, ascending: true });
-  // refresh tree
-  nodeArray.value = await invoke("get_tree", { path: currentFilePath.value });
-}
-
-async function doAdd() {
-  await invoke("add_file_to_groups", {
-    node_ids: selectedIds.value,
-    file_name: newFileName.value,
+async function openFile() {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [
+      {
+        name: "uVision workspace file",
+        extensions: ["txt", "xml"],
+      },
+      {
+        name: "All files",
+        extensions: ["*"],
+      },
+    ],
   });
-  nodeArray.value = await invoke("get_tree", { path: currentFilePath.value });
-}
 
-async function doDelete() {
-  await invoke("delete_file_nodes", { node_ids: selectedIds.value });
-  nodeArray.value = await invoke("get_tree", { path: currentFilePath.value });
+  if (selected) {
+    console.log("選択されたファイル:", selected);
+    filePath.value = selected;
+    await invoke("load_files", { paths: [selected] });
+    const t = await invoke("get_tree", { path: selected });
+    nodeArray.value = markDisabled(t);
+    openIds.value = expandAll(t);
+    selectedIds.value = {};
+  } else {
+    console.log("キャンセルされました");
+  }
+}
+async function doEdit() {
+  switch (selectedEditMode.value) {
+    case "addFile":
+      await invoke("add_file_to_groups", {
+        node_ids: selectedIds.value,
+        file_name: newFileName.value,
+      });
+      break;
+    case "deleteFile":
+      await invoke("delete_file_nodes", { node_ids: selectedIds.value });
+      break;
+    case "sort":
+      await invoke("sort_groups", {
+        node_ids: selectedIds.value,
+        ascending: true,
+      });
+      break;
+    case "addInclude":
+      break;
+    case "deleteInclude":
+      break;
+    default:
+      break;
+  }
 }
 
 async function doSave() {
-  await invoke("save_file", { path: currentFilePath.value });
+  // await invoke("save_file", { path: filePath.value });
   // optionally notify saved
   alert("Saved");
 }
 
 async function printDebug() {
   // debugMessage.value = tree.value;
-  debugMessage.value = nodeArray.value;
+  debugMessage.value = selectedIds.value;
 }
-const filePath = ref("/path/to/opened/file.txt");
 </script>
 
 <template>
@@ -129,11 +163,13 @@ const filePath = ref("/path/to/opened/file.txt");
       filterMode="lenient"
       class="mt-4"
     />
-    <Button outlined label="編集" @click="doAdd" />
+    <Button outlined label="編集" @click="doEdit" />
     <Button outlined label="保存" @click="doSave" />
     <Button outlined label="開く" @click="doSave" />
 
-    <pre class="mt-4">Selected: {{ selectedIds }}</pre>
+    <Button outlined label="Debug" @click="printDebug" />
+
+    <!-- <pre class="mt-4">Selected: {{ selectedIds }}</pre> -->
     <p>{{ debugMessage }}</p>
   </main>
 </template>
