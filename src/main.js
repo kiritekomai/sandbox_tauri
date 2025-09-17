@@ -3,6 +3,7 @@ import App from "./App.vue";
 
 import PrimeVue from 'primevue/config'
 import Button from 'primevue/button';
+import Checkbox from 'primevue/checkbox';
 import SelectButton from 'primevue/selectbutton';
 import Tree from 'primevue/tree'
 import InputText from 'primevue/inputtext';
@@ -60,6 +61,7 @@ const MyPreset = definePreset(Aura, {
 
 createApp(App)
   .component('Button', Button)
+  .component('Checkbox', Checkbox)
   .component('SelectButton', SelectButton)
   .component('Tree', Tree)
   .component('InputText', InputText)

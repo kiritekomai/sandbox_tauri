@@ -18,7 +18,7 @@ const selectedEditMode = ref(editModes[0].value);
 
 const debugMessage = ref("");
 const nodeArray = ref([]);
-const selectedIds = ref({});
+const selectedIds = ref(new Set());
 const openIds = ref({});
 const newFileName = ref("newfile");
 
@@ -38,7 +38,7 @@ function markDisabled(nodes) {
   return nodes.map((node) => {
     const newNode = { ...node };
     if (node.node_type !== "file") {
-      newNode.selectable = false;
+      // newNode.selectable = false;
     }
     if (node.children) {
       newNode.children = markDisabled(node.children);
@@ -54,7 +54,7 @@ async function onLoadExample() {
   const t = await invoke("get_tree", { path });
   nodeArray.value = markDisabled(t);
   openIds.value = expandAll(t);
-  selectedIds.value = {};
+  selectedIds.value = new Set();
   debugMessage.value = t;
 }
 
@@ -81,7 +81,7 @@ async function openFile() {
     const t = await invoke("get_tree", { path: selected });
     nodeArray.value = markDisabled(t);
     openIds.value = expandAll(t);
-    selectedIds.value = {};
+    selectedIds.value = new Set();
   } else {
     console.log("キャンセルされました");
   }
@@ -116,6 +116,16 @@ async function doSave() {
   // await invoke("save_file", { path: filePath.value });
   // optionally notify saved
   alert("Saved");
+}
+
+function toggleCheck(key) {
+  if (selectedIds.value.has(key)) {
+    selectedIds.value.delete(key);
+  } else {
+    selectedIds.value.add(key);
+  }
+  // Set をトリガーするためにコピーを作る
+  selectedIds.value = new Set(selectedIds.value);
 }
 
 async function printDebug() {
@@ -154,15 +164,25 @@ async function printDebug() {
     <p class="desc">編集対象を選択して下さい</p>
     <Tree
       :value="nodeArray"
-      v-model:selectionKeys="selectedIds"
-      selectionMode="checkbox"
       :expandedKeys="openIds"
-      :propagateSelectionUp="false"
-      :propagateSelectionDown="false"
       :filter="true"
       filterMode="lenient"
-      class="mt-4"
-    />
+    >
+      <!-- 各ノードの描画をカスタム -->
+      <template #default="slotProps">
+        <div class="flex items-center gap-2">
+          <!-- selectable が undefined または true の場合だけ表示 -->
+          <Checkbox
+            v-if="slotProps.node.selectable !== false"
+            binary
+            :modelValue="selectedIds.has(slotProps.node.key)"
+            @change="toggleCheck(slotProps.node.key)"
+          />
+          <!-- ノードのラベル -->
+          <span>{{ slotProps.node.label }}</span>
+        </div>
+      </template>
+    </Tree>
     <Button outlined label="編集" @click="doEdit" />
     <Button outlined label="保存" @click="doSave" />
     <Button outlined label="開く" @click="doSave" />
