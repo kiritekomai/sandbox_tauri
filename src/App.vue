@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import SelectButton from "primevue/selectbutton";
 import InputText from "primevue/inputtext";
+import FileSettingDialog from "./components/FileSettingDialog.vue";
 
 const filePath = ref("");
 
@@ -132,6 +133,16 @@ async function printDebug() {
   // debugMessage.value = tree.value;
   debugMessage.value = selectedIds.value;
 }
+
+const showDialog = ref(false);
+const currentItems = ref([
+  { name: "項目A1", sub: "説明A1" },
+  { name: "項目A2", sub: "説明A2" },
+]);
+
+function handleOk(items) {
+  console.log("OKで受け取ったパス一覧:", items);
+}
 </script>
 
 <template>
@@ -188,9 +199,17 @@ async function printDebug() {
     <Button outlined label="開く" @click="doSave" />
 
     <Button outlined label="Debug" @click="printDebug" />
+    <Button label="設定ウィンドウを開く" @click="showDialog = true" />
 
     <!-- <pre class="mt-4">Selected: {{ selectedIds }}</pre> -->
     <p>{{ debugMessage }}</p>
+    <!-- ダイアログコンポーネント -->
+    <FileSettingDialog
+      v-model:visible="showDialog"
+      :headers="{ col1: '項目名1', col2: '項目名2', col3: 'ファイルパス' }"
+      :initial-items="currentItems"
+      @ok="handleOk"
+    />
   </main>
 </template>
 
