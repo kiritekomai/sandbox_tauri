@@ -5,6 +5,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import SelectButton from "primevue/selectbutton";
 import InputText from "primevue/inputtext";
 import FileSettingDialog from "./components/FileSettingDialog.vue";
+import IncludeSettingDialog from "./components/IncludeSettingDialog.vue";
 
 const filePath = ref("");
 
@@ -143,6 +144,7 @@ const currentItems = ref([
 function handleOk(items) {
   console.log("OKで受け取ったパス一覧:", items);
 }
+const showIncludeSettingDialog = ref(false);
 </script>
 
 <template>
@@ -210,6 +212,14 @@ function handleOk(items) {
       :initial-items="currentItems"
       @ok="handleOk"
     />
+
+    <Button
+      label="フォルダを選択"
+      icon="pi pi-folder-open"
+      @click="showIncludeSettingDialog = true"
+    />
+
+    <IncludeSettingDialog v-model:visible="showIncludeSettingDialog" />
   </main>
 </template>
 

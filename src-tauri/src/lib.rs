@@ -13,6 +13,7 @@ use xmltree::Element;
 use sxd_document::parser as sxd_parser;
 use sxd_xpath::{Context, Factory, Value};
 
+use std::{collections::HashSet, path::Path, process::Command};
 use tauri::Manager;
 
 /// CachedDoc: 各ファイルごとのキャッシュ
@@ -554,6 +555,198 @@ fn remove_file_by_xpath(root: &mut Element, xpath: &str) -> Result<(), String> {
     }
 }
 
+#[derive(Debug, Serialize)]
+struct TreeIncludeNode {
+    id: String,
+    label: String,
+    full_path: String, // ← 追加
+    children: Vec<TreeIncludeNode>,
+    exists: bool,
+    selected: bool,
+    inside_repo: bool,
+    registed: HashMap<String, bool>,
+}
+
+/// 1. Gitリポジトリのルートを探す
+fn find_git_root(start: &Path) -> Option<PathBuf> {
+    let output = Command::new("git")
+        .arg("rev-parse")
+        .arg("--show-toplevel")
+        .current_dir(start)
+        .output()
+        .ok()?;
+    if output.status.success() {
+        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Some(PathBuf::from(path_str))
+    } else {
+        None
+    }
+}
+
+/// 3. 共通の親ディレクトリを探す（repo_root以下）
+fn common_parent<'a>(repo_root: &Path, paths: &[&'a Path]) -> PathBuf {
+    let mut components: Vec<Vec<&std::ffi::OsStr>> = paths
+        .iter()
+        .map(|p| p.components().map(|c| c.as_os_str()).collect())
+        .collect();
+
+    if components.is_empty() {
+        return repo_root.to_path_buf();
+    }
+
+    let mut common: Vec<&std::ffi::OsStr> = vec![];
+    'outer: for i in 0.. {
+        let first = match components[0].get(i) {
+            Some(c) => c,
+            None => break,
+        };
+        for comp in &components {
+            if comp.get(i) != Some(first) {
+                break 'outer;
+            }
+        }
+        common.push(first);
+    }
+
+    let mut result = PathBuf::new();
+    for c in common {
+        result.push(c);
+    }
+    if result.starts_with(repo_root) {
+        result
+    } else {
+        repo_root.to_path_buf()
+    }
+}
+
+/// 4. 再帰的にフォルダツリーを走査（リポジトリ内）
+fn build_tree(base: &Path, repo_root: &Path, all_selected: &HashSet<PathBuf>) -> TreeIncludeNode {
+    let exists = base.exists();
+    let selected = all_selected.contains(base);
+    let inside_repo = base.starts_with(repo_root);
+
+    let mut children = vec![];
+
+    // 1. 存在するディレクトリなら通常の fs::read_dir を走査
+    if exists && base.is_dir() {
+        if let Ok(entries) = fs::read_dir(base) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                children.push(build_tree(&path, repo_root, all_selected));
+            }
+        }
+    }
+
+    // 2. 存在しない場合でも all_selected の中に base 以下のパスがある場合は子を生成
+    for sel in all_selected.iter() {
+        if sel.starts_with(base) && sel != base {
+            let mut components = sel.strip_prefix(base).unwrap().components();
+            if let Some(next_comp) = components.next() {
+                let next_path = base.join(next_comp.as_os_str());
+                // 重複チェック
+                if !children
+                    .iter()
+                    .any(|c: &TreeIncludeNode| c.full_path == next_path.to_string_lossy())
+                {
+                    children.push(build_tree(&next_path, repo_root, all_selected));
+                }
+            }
+        }
+    }
+
+    let mut registed = HashMap::new();
+    registed.insert("arrayA".to_string(), false);
+    registed.insert("arrayB".to_string(), false);
+    registed.insert("arrayC".to_string(), false);
+
+    TreeIncludeNode {
+        id: base.to_string_lossy().to_string(),
+        label: if inside_repo {
+            base.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string()
+        } else {
+            base.to_string_lossy().to_string()
+        },
+        full_path: base.to_string_lossy().to_string(),
+        children,
+        exists,
+        selected,
+        inside_repo,
+        registed,
+    }
+}
+
+/// リポジトリ外ノードを単独で生成
+fn build_external_node(path: &Path, all_selected: &HashSet<PathBuf>) -> TreeIncludeNode {
+    let mut registed = HashMap::new();
+    registed.insert("arrayA".to_string(), false);
+    registed.insert("arrayB".to_string(), false);
+    registed.insert("arrayC".to_string(), false);
+    TreeIncludeNode {
+        id: path.to_string_lossy().to_string(),
+        label: path.to_string_lossy().to_string(), // ← repo外はフルパスをそのままlabelに
+        full_path: path.to_string_lossy().to_string(),
+        children: vec![],
+        exists: path.exists(),
+        selected: all_selected.contains(path),
+        inside_repo: false,
+        registed: registed,
+    }
+}
+
+#[tauri::command]
+async fn get_include_tree_nodes() -> Result<Vec<TreeIncludeNode>, String> {
+    // 仮の入力
+    let known_file =
+        PathBuf::from("C:\\Users\\Admin\\Desktop\\script\\aaaa\\src-tauri\\.gitignore");
+    let given_folders = vec![
+        PathBuf::from("C:\\Users\\Admin\\Desktop\\script\\aaaa\\inc\\a\\b"),
+        PathBuf::from("C:\\Users\\Admin\\Desktop\\script\\aaaa\\inc\\g\\h"),
+        PathBuf::from("C:\\Users\\Admin\\Desktop\\script\\yamp-test\\src"),
+    ];
+
+    // 1. gitリポジトリルート探索
+    let repo_root = find_git_root(&known_file.parent().unwrap()).expect("not in git repo");
+
+    // 2. gitリポジトリ内だけを抽出
+    let inside: Vec<&Path> = given_folders
+        .iter()
+        .map(|p| p.as_path())
+        .filter(|p| p.starts_with(&repo_root))
+        .collect();
+    println!("inside:{:?}", inside);
+    let outside: Vec<&Path> = given_folders
+        .iter()
+        .map(|p| p.as_path())
+        .filter(|p| !p.starts_with(&repo_root))
+        .collect();
+
+    // 3. 共通の親フォルダを探す
+    let common = common_parent(&repo_root, &inside);
+
+    // 4. ツリー作成
+    let all_selected: HashSet<PathBuf> = given_folders.iter().cloned().collect();
+    println!("all_selected:{:?}", all_selected);
+    let mut nodes = vec![];
+
+    if !inside.is_empty() {
+        let repo_tree = build_tree(&common, &repo_root, &all_selected);
+        nodes.push(repo_tree);
+    }
+    println!("nodes:{:?}", nodes);
+
+    // 追加: リポジトリ外ノード
+    for p in outside {
+        nodes.push(build_external_node(p, &all_selected));
+    }
+
+    // 5. JSONでPrimeVueに渡す（仮想ルートノード）
+    // println!("{}", serde_json::to_string_pretty(&nodes).unwrap());
+    Ok(nodes)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -565,6 +758,7 @@ pub fn run() {
             sort_groups,
             add_file_to_groups,
             delete_file_nodes,
+            get_include_tree_nodes,
             save_file
         ])
         .run(tauri::generate_context!())

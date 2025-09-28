@@ -4,9 +4,11 @@ import App from "./App.vue";
 import PrimeVue from 'primevue/config'
 import Button from 'primevue/button';
 import Checkbox from 'primevue/checkbox';
+
 import Column   from 'primevue/column';
 import DataTable  from 'primevue/datatable';
 import Dialog   from 'primevue/dialog';
+import MultiSelect from "primevue/multiselect";
 import SelectButton from 'primevue/selectbutton';
 import Tree from 'primevue/tree'
 import InputText from 'primevue/inputtext';
@@ -68,6 +70,7 @@ createApp(App)
   .component('Column ', Column )
   .component('DataTable ', DataTable )
   .component('Dialog  ', Dialog  )
+  .component('MultiSelect', MultiSelect)
   .component('SelectButton', SelectButton)
   .component('Tree', Tree)
   .component('InputText', InputText)
